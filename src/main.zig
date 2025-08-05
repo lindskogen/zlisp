@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @cImport({
+    @cInclude("stdlib.h");
     @cInclude("readline/readline.h");
     @cInclude("readline/history.h");
     @cInclude("string.h");
@@ -8,6 +9,36 @@ const c = @cImport({
 const mpc = @cImport({
     @cInclude("mpc.h");
 });
+
+
+fn eval_op(x: i64, op: u8, y: i64) i64 {
+    return switch (op) {
+        '+' => x + y,
+        '-' => x - y,
+        '*' => x * y,
+        '/' => @divTrunc(x, y),
+        else => 0,
+    };
+}
+
+fn eval(t: *mpc.mpc_ast_t) i64 {
+    if (c.strstr(t.tag, "number") != 0) {
+        return c.atoi(t.contents);
+    }
+
+    const op = t.children[1].*.contents;
+
+    var x = eval(t.children[2]);
+
+    var i: u64 = 3;
+
+    while (c.strstr(t.children[i].*.tag, "expr") != 0) {
+        x = eval_op(x, op[0], eval(t.children[i]));
+        i += 1;
+    }
+
+    return x;
+}
 
 
 pub fn main() !void {
@@ -26,7 +57,7 @@ pub fn main() !void {
 
     const stdout = std.io.getStdOut().writer();
 
-    try stdout.print("Zlisp Version 0.0.1\n", .{});
+    try stdout.print("Zlisp Version 0.0.3\n", .{});
     try stdout.print("Press Ctrl+C to Exit\n", .{});
 
 
@@ -43,7 +74,9 @@ pub fn main() !void {
                 const ast: *mpc.mpc_ast_t = @alignCast(@ptrCast(r.output));
                 defer mpc.mpc_ast_delete(ast);
 
-                mpc.mpc_ast_print(ast);
+                const result = eval(ast);
+                
+                try stdout.print("{d}\n", .{ result });
             } else {
                 const err: *mpc.mpc_err_t = @alignCast(@ptrCast(r.@"error"));
                 defer mpc.mpc_err_delete(err);
@@ -57,3 +90,7 @@ pub fn main() !void {
 
 }
 
+
+// test "+ 1 2" {
+//
+// }

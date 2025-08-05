@@ -40,13 +40,15 @@ pub fn main() !void {
             var r: mpc.mpc_result_t = undefined;
 
             if (mpc.mpc_parse("<stdin>", input, zlisp, &r) != 0) {
-                defer mpc.mpc_ast_delete(@alignCast(@ptrCast(r.output)));
+                const ast: *mpc.mpc_ast_t = @alignCast(@ptrCast(r.output));
+                defer mpc.mpc_ast_delete(ast);
 
-                mpc.mpc_ast_print(@alignCast(@ptrCast(r.output)));
+                mpc.mpc_ast_print(ast);
             } else {
-                defer mpc.mpc_err_delete(@alignCast(@ptrCast(r.@"error")));
+                const err: *mpc.mpc_err_t = @alignCast(@ptrCast(r.@"error"));
+                defer mpc.mpc_err_delete(err);
 
-                mpc.mpc_err_print(@alignCast(@ptrCast(r.@"error")));
+                mpc.mpc_err_print(err);
             }
 
         }

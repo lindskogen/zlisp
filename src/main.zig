@@ -10,36 +10,52 @@ const mpc = @cImport({
     @cInclude("mpc.h");
 });
 
+const LispValue = union(enum) {
+    num: i64,
+};
 
-fn eval_op(x: i64, op: u8, y: i64) i64 {
+fn lispvalue_print(writer: anytype, v: LispValue) !void {
+    switch (v) {
+        .num => |num| {
+            try writer.print("{d}\n", .{ num });
+        }
+    }
+}
+
+fn eval_op(x: LispValue, op: u8, y: LispValue) !LispValue {
     return switch (op) {
-        '+' => x + y,
-        '-' => x - y,
-        '*' => x * y,
-        '/' => @divTrunc(x, y),
-        else => 0,
+        '+' => LispValue{ .num = x.num + y.num },
+        '-' => LispValue{ .num = x.num - y.num },
+        '*' => LispValue{ .num = x.num * y.num },
+        '/' => {
+            if (y.num == 0) {
+                return error.DivZero;
+            }
+            return LispValue{ .num = @divTrunc(x.num, y.num) };
+        },
+        else => error.BadOperation,
     };
 }
 
-fn eval(t: *mpc.mpc_ast_t) i64 {
+fn eval(t: *mpc.mpc_ast_t) !LispValue {
     if (c.strstr(t.tag, "number") != 0) {
-        return c.atoi(t.contents);
+        const v = try std.fmt.parseInt(i64, std.mem.span(t.contents), 10);
+        return LispValue{ .num = v };
     }
 
     const op = t.children[1].*.contents;
 
-    var x = eval(t.children[2]);
+    var x = try eval(t.children[2]);
 
     var i: u64 = 3;
 
     while (c.strstr(t.children[i].*.tag, "expr") != 0) {
-        x = eval_op(x, op[0], eval(t.children[i]));
+        x = try eval_op(x, op[0], try eval(t.children[i]));
         i += 1;
     }
 
     return x;
 }
-
 
 pub fn main() !void {
     const number = mpc.mpc_new("number");
@@ -60,7 +76,6 @@ pub fn main() !void {
     try stdout.print("Zlisp Version 0.0.3\n", .{});
     try stdout.print("Press Ctrl+C to Exit\n", .{});
 
-
     while (true) {
         const raw_input = c.readline("zlisp> ");
         defer std.c.free(raw_input);
@@ -74,22 +89,26 @@ pub fn main() !void {
                 const ast: *mpc.mpc_ast_t = @alignCast(@ptrCast(r.output));
                 defer mpc.mpc_ast_delete(ast);
 
-                const result = eval(ast);
-                
-                try stdout.print("{d}\n", .{ result });
+                if (eval(ast)) |result| {
+                    try lispvalue_print(stdout, result);
+                } else |err| switch (err) {
+                    error.DivZero => try stdout.print("Error: Division by zero!\n", .{}),
+                    error.InvalidCharacter,
+                        error.Overflow => try stdout.print("Error: Invalid number!\n", .{}),
+                    error.BadOperation => try stdout.print("Error: Invalid operator!\n", .{}),
+                    else => |other_err| return other_err
+                }
+
+
             } else {
                 const err: *mpc.mpc_err_t = @alignCast(@ptrCast(r.@"error"));
                 defer mpc.mpc_err_delete(err);
 
                 mpc.mpc_err_print(err);
             }
-
         }
     }
-
-
 }
-
 
 // test "+ 1 2" {
 //

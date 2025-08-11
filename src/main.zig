@@ -19,9 +19,6 @@ const LispValue = union(enum) {
         switch (self) {
             .cell => |slice| {
                 for (slice.items) |item| {
-                    std.debug.print("remove: ", .{});
-                    // lispvalue_debug(item);
-                    std.debug.print("\n", .{});
                     item.deinit();
                 }
                 slice.deinit();
@@ -198,8 +195,10 @@ fn read_and_print(writer: anytype, ast: *mpc.mpc_ast_t, allocator: std.mem.Alloc
 }
 
 pub fn main() !void {
-    var gpa = std.heap.DebugAllocator(.{}){};
-    const allocator = gpa.allocator();
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
+    const allocator = arena.allocator();
     defer _ = gpa.deinit();
 
     const number = mpc.mpc_new("number");
@@ -223,6 +222,8 @@ pub fn main() !void {
     try stdout.print("Press Ctrl+C to Exit\n", .{});
 
     if (true) {
+        defer _ = arena.reset(.free_all);
+
         const raw_input = c.readline("zlisp> ");
         defer std.c.free(raw_input);
 

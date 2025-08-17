@@ -13,11 +13,11 @@ const mpc = @cImport({
 const LispValue = union(enum) {
     num: i64,
     sym: []u8,
-    cell: std.ArrayList(LispValue),
+    sexpr: std.ArrayList(LispValue),
 
     fn deinit(self: LispValue) void {
         switch (self) {
-            .cell => |slice| {
+            .sexpr => |slice| {
                 for (slice.items) |item| {
                     item.deinit();
                 }
@@ -32,16 +32,16 @@ const EvalError = error{ SexpressionNoStartWithSymbol, BuiltinCannotOperateOnNon
 
 fn eval_lispvalue(v: *LispValue) !LispValue {
     return switch (v.*) {
-        .cell => eval_sexpr(v),
+        .sexpr => eval_sexpr(v),
         else => v.*,
     };
 }
 
 fn eval_sexpr(v: *LispValue) EvalError!LispValue {
     switch (v.*) {
-        .cell => |*cells| {
+        .sexpr => |*cells| {
             for (0..cells.items.len) |i| {
-                v.cell.items[i] = try eval_lispvalue(&v.cell.items[i]);
+                v.sexpr.items[i] = try eval_lispvalue(&v.sexpr.items[i]);
             }
 
             if (cells.items.len == 0) {
@@ -80,7 +80,7 @@ fn lispvalue_debug(v: LispValue) void {
         .sym => |sym| {
             std.debug.print("{s}", .{sym});
         },
-        .cell => |cells| {
+        .sexpr => |cells| {
             std.debug.print("(", .{});
             for (cells.items, 0..) |cell, i| {
                 lispvalue_debug(cell);
@@ -101,7 +101,7 @@ fn lispvalue_print(writer: anytype, v: LispValue) !void {
         .sym => |sym| {
             try writer.print("{s}", .{sym});
         },
-        .cell => |cells| {
+        .sexpr => |cells| {
             try writer.print("(", .{});
             for (cells.items, 0..) |cell, i| {
                 try lispvalue_print(writer, cell);
@@ -117,7 +117,7 @@ fn lispvalue_print(writer: anytype, v: LispValue) !void {
 fn builtin_op(a: *LispValue, op: u8) !LispValue {
     defer a.deinit();
 
-    for (a.cell.items) |cell| {
+    for (a.sexpr.items) |cell| {
         switch (cell) {
             .num => {},
             else => {
@@ -128,13 +128,13 @@ fn builtin_op(a: *LispValue, op: u8) !LispValue {
         }
     }
 
-    var x = a.cell.orderedRemove(0);
+    var x = a.sexpr.orderedRemove(0);
 
-    if (op == '-' and a.cell.items.len == 0) {
+    if (op == '-' and a.sexpr.items.len == 0) {
         x.num = -x.num;
     }
 
-    for (a.cell.items) |y| {
+    for (a.sexpr.items) |y| {
         switch (op) {
             '+' => x.num += y.num,
             '-' => x.num -= y.num,
@@ -179,13 +179,10 @@ fn lispvalue_read(t: *mpc.mpc_ast_t, alloc: std.mem.Allocator) !LispValue {
             continue;
         }
         const v = try lispvalue_read(t.children[i], alloc);
-        std.debug.print("append: ", .{});
-        lispvalue_debug(v);
-        std.debug.print("\n", .{});
         try list.append(v);
     }
 
-    return LispValue{ .cell = list };
+    return LispValue{ .sexpr = list };
 }
 
 fn read_and_print(writer: anytype, ast: *mpc.mpc_ast_t, allocator: std.mem.Allocator) !void {
@@ -221,7 +218,7 @@ pub fn main() !void {
     try stdout.print("Zlisp Version 0.0.3\n", .{});
     try stdout.print("Press Ctrl+C to Exit\n", .{});
 
-    if (true) {
+    while (true) {
         defer _ = arena.reset(.free_all);
 
         const raw_input = c.readline("zlisp> ");
